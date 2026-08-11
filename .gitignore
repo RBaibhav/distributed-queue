@@ -34,3 +34,7 @@ yarn-error.log*
 
 # ui
 dist/
+
+# local planning/context notes
+PROJECT_CONTEXT.local.md
+STAGE2_EXECUTION_CHECKLIST.local.md

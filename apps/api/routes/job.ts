@@ -1,4 +1,5 @@
 import { prisma } from "@repo/db";
+import { redis } from "@repo/redis";
 import { Router } from "express";
 
 const router = Router();
@@ -13,12 +14,7 @@ router.post("/", async (req, res) => {
     },
   });
 
-  if (!job) {
-    res.status(303).send({
-      error: "internal server error",
-    });
-  }
-
+  await redis.lpush("job_queue", job.id);
   res.status(200).send({
     id: job.id,
   });
