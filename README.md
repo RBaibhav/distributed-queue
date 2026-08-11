@@ -187,6 +187,24 @@ Template:
 | 2       |      |                |                     |          |
 | 4       |      |                |                     |          |
 
+## Stage 2 Benchmark Results
+
+Measured on a batch of 20 jobs using the current `test` handler.
+
+| Workers | Jobs | Total Time (s) | Throughput (jobs/s) | Failures |
+| ------- | ---- | -------------- | ------------------- | -------- |
+| 1       | 20   | 20.95          | 0.95                | 0        |
+| 2       | 20   | 10.50          | 1.90                | 0        |
+| 4       | 20   | 5.63           | 3.55                | 0        |
+
+Observed scaling:
+
+- 2 workers achieved about 2x the throughput of 1 worker.
+- 4 workers achieved about 3.7x the throughput of 1 worker.
+- Execution time roughly halved as worker count doubled.
+
+These results show that the current worker model scales horizontally for this workload, while PostgreSQL remains the durable source of truth for job state.
+
 ## Known Limitations
 
 - Redis queue coordination is still being introduced.
