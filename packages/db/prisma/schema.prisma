@@ -17,3 +17,25 @@ model User {
   username String
   password String
 }
+
+enum JobStatus {
+  QUEUED
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+model Job {
+  id      String    @id @default(uuid())
+  type    String
+  payload Json
+  status  JobStatus @default(QUEUED)
+
+  result Json?
+  error  Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+}
