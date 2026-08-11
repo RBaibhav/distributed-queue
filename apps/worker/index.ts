@@ -1,90 +1,85 @@
 import { Prisma, prisma } from "@repo/db";
-
-async function claimNextJob() {
-  const job = await prisma.job.findFirst({
-    where: {
-      status: "QUEUED",
-    },
-    orderBy: {
-      createdAt: "asc",
-    },
-  });
-
-  if (!job) return null;
-  const result = await prisma.job.updateMany({
-    where: {
-      status: "QUEUED",
-      id: job.id,
-    },
-    data: {
-      status: "PROCESSING",
-      updatedAt: new Date(),
-    },
-  });
-
-  if (result.count == 0) return null;
-
-  return prisma.job.findUnique({
-    where: {
-      id: job.id,
-    },
-  });
-}
+import { redis } from "@repo/redis";
 
 async function executeJob(job: Prisma.JobGetPayload<{}>) {
   switch (job.type) {
     case "test":
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+
       return {
-        message: "Job executed scussesfully",
+        message: "Job executed successfully",
         payload: job.payload,
       };
+
     default:
-      throw new Error(`unknown job type ${job.type}`);
+      throw new Error(`Unknown job type: ${job.type}`);
   }
 }
 
 async function main() {
   console.log("Worker Started : ");
   while (true) {
-    const job = await claimNextJob();
+    const front = await redis.brpop("job_queue", 0);
 
-    if (!job) {
-      console.log("queue is empty or the job is already claimed");
-      return;
+    if (!front) {
+      continue;
     }
 
-    console.log("procsessuing", job.id);
+    const jobId = front[1];
+    const job = await prisma.job.findUnique({
+      where: {
+        id: jobId,
+      },
+    });
+
+    if (!job) {
+      console.error("Job not found:", jobId);
+      continue;
+    }
+    // queue: processing
+    const claimedJob = await prisma.job.updateMany({
+      where: {
+        id: jobId,
+        status: "QUEUED",
+      },
+      data: {
+        status: "PROCESSING",
+      },
+    });
+    if (claimedJob.count === 0) {
+      console.log("Job was already claimed:", jobId);
+      continue;
+    }
+    console.log("processing:", jobId);
+
     try {
       const result = await executeJob(job);
-
       await prisma.job.update({
         where: {
-          id: job.id,
+          id: jobId,
         },
         data: {
           status: "COMPLETED",
-          result,
+          result: result,
+          completedAt: new Date(),
         },
       });
-
-      console.log(`job completed ${job.id}`);
     } catch (error) {
+      console.error("Error occurred while processing job:", error);
       await prisma.job.update({
         where: {
-          id: job.id,
+          id: jobId,
         },
         data: {
           status: "FAILED",
           error: {
-            message: error instanceof Error ? error.message : "unknown error",
+            message: error instanceof Error ? error.message : String(error),
           },
         },
       });
-
-      console.error(`job failed ${job.id}`, error);
     }
-    
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+
+    console.log("Job received from queue:", front);
   }
 }
 
