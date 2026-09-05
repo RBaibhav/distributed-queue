@@ -34,8 +34,11 @@ model Job {
   result Json?
   error  Json?
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  workerId   String?
+  leaseUntil DateTime?
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
   completedAt DateTime?
 
   @@index([status])

@@ -9,8 +9,8 @@ The goal is not to recreate BullMQ feature-for-feature. The goal is to understan
 The codebase is in Stage 2 of the roadmap.
 
 - PostgreSQL stores durable job metadata and results.
-- The worker currently claims jobs from PostgreSQL with an atomic compare-and-set pattern.
-- Redis-based queue coordination is the next step and is documented in the local Stage 2 checklist.
+- The API writes each job to PostgreSQL and enqueues the job ID in Redis.
+- The worker blocks on Redis, claims jobs in PostgreSQL with an atomic compare-and-set pattern, and persists results or failures.
 
 ## Architecture
 
@@ -18,7 +18,7 @@ The codebase is in Stage 2 of the roadmap.
 flowchart LR
   Client[Client] --> API[REST API]
   API --> PG[(PostgreSQL)]
-  API --> R[(Redis Queue)]
+  API --> R[(Redis job_queue)]
   R --> W1[Worker 1]
   R --> W2[Worker 2]
   R --> WN[Worker N]
@@ -27,7 +27,7 @@ flowchart LR
   WN --> PG
 ```
 
-PostgreSQL is the source of truth for job state, while Redis coordinates pending work between workers.
+PostgreSQL is the source of truth for job state, while Redis coordinates pending work between workers. The API persists the job first, then pushes the job ID to Redis, and each worker claims the job record in PostgreSQL before execution.
 
 ## Job Lifecycle
 
@@ -207,10 +207,9 @@ These results show that the current worker model scales horizontally for this wo
 
 ## Known Limitations
 
-- Redis queue coordination is still being introduced.
 - Crash recovery with visibility timeouts is not complete yet.
 - Retries and exponential backoff are planned for the next stage.
-- The worker currently exits when the queue is empty instead of running as a long-lived poller.
+- The queue currently does not provide crash recovery or retry guarantees.
 
 ## Future Improvements
 
