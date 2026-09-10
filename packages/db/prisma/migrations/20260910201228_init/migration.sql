@@ -1,0 +1,4 @@
+-- AlterTable
+ALTER TABLE "Job" ADD COLUMN     "attemptCount" INTEGER NOT NULL DEFAULT 0,
+ADD COLUMN     "maxAttempt" INTEGER NOT NULL DEFAULT 3,
+ADD COLUMN     "nextAttemptAt" TIMESTAMP(3);
