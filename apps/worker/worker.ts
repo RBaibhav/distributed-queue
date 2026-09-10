@@ -5,7 +5,8 @@ import { redis } from "@repo/redis";
 import { executeJob } from "./jobs/executor";
 import { jobClaimer } from "./queue/claimer";
 import { WORKER_ID } from "./config";
-
+import { schduleRetries } from "./queue/schedular";
+import { getRetryDelay } from "./retry/retry-policy";
 
 export async function startWorker() {
   console.log("Worker Started : ");
@@ -16,6 +17,10 @@ export async function startWorker() {
       console.error("Recovery Error", e);
     });
   }, 5000);
+
+  schduleRetries().catch((e) => {
+    console.error("Schedular error", e);
+  });
 
   while (true) {
     const job = await jobClaimer();
@@ -40,17 +45,45 @@ export async function startWorker() {
       });
     } catch (error) {
       console.error("Error occurred while processing job:", error);
-      await prisma.job.update({
-        where: {
-          id: job.id,
-        },
-        data: {
-          status: "FAILED",
-          error: {
-            message: error instanceof Error ? error.message : String(error),
+
+      const now = new Date();
+
+      if (job.attemptCount >= job.maxAttempts) {
+        await prisma.job.updateMany({
+          where: {
+            id: job.id,
+            status: "PROCESSING",
+            workerId: WORKER_ID,
           },
-        },
-      });
+          data: {
+            status: "FAILED",
+            error: {
+              message: error instanceof Error ? error.message : String(error),
+            },
+            workerId: null,
+            leaseUntil: null,
+          },
+        });
+      } else {
+        const retryDelay = getRetryDelay(job.attemptCount);
+
+        await prisma.job.updateMany({
+          where: {
+            id: job.id,
+            status: "PROCESSING",
+            workerId: WORKER_ID,
+          },
+          data: {
+            status: "QUEUED",
+            error: {
+              message: error instanceof Error ? error.message : String(error),
+            },
+            workerId: null,
+            leaseUntil: null,
+            nextAttemptAt: new Date(now.getTime() + retryDelay),
+          },
+        });
+      }
     }
   }
 }

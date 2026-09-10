@@ -38,7 +38,7 @@ model Job {
   leaseUntil   DateTime?
   
   attemptCount Int  @default(0)
-  maxAttempt Int @default(3)
+  maxAttempts Int @default(3)
   nextAttemptAt   DateTime?
 
 
