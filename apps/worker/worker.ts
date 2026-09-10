@@ -3,11 +3,9 @@ import { recoverExpiredJobs } from "./recovery/expired-jobs";
 import { randomUUID } from "crypto";
 import { redis } from "@repo/redis";
 import { executeJob } from "./jobs/executor";
+import { jobClaimer } from "./queue/claimer";
+import { WORKER_ID } from "./config";
 
-const WORKER_ID = randomUUID();
-const LEASE_DURATION = 30_000;
-
-const blockingRedis = redis.duplicate();
 
 export async function startWorker() {
   console.log("Worker Started : ");
@@ -20,53 +18,15 @@ export async function startWorker() {
   }, 5000);
 
   while (true) {
-    const front = await blockingRedis.brpop("job_queue", 0);
+    const job = await jobClaimer();
 
-    if (!front) {
-      continue;
-    }
-
-    const jobId = front[1];
-    const job = await prisma.job.findUnique({
-      where: {
-        id: jobId,
-        status: "QUEUED",
-      },
-    });
-
-    if (!job) {
-      console.error("Job not found:", jobId);
-      continue;
-    }
-
-    const leaseUnitl = new Date(Date.now() + LEASE_DURATION);
-    // queue: processing
-    const claimedJob = await prisma.job.updateMany({
-      where: {
-        id: jobId,
-        status: "QUEUED",
-      },
-      data: {
-        status: "PROCESSING",
-        workerId: WORKER_ID,
-        leaseUntil: leaseUnitl,
-      },
-    });
-    console.log(
-      `=================WORKER_ID: ${WORKER_ID} ========== leaseUnitl ${leaseUnitl}`,
-    );
-
-    if (claimedJob.count === 0) {
-      console.log("Job was already claimed:", jobId);
-      continue;
-    }
-    console.log("processing:", jobId);
+    if (!job) continue;
 
     try {
       const result = await executeJob(job);
       await prisma.job.update({
         where: {
-          id: jobId,
+          id: job.id,
           status: "PROCESSING",
           workerId: WORKER_ID,
         },
@@ -82,7 +42,7 @@ export async function startWorker() {
       console.error("Error occurred while processing job:", error);
       await prisma.job.update({
         where: {
-          id: jobId,
+          id: job.id,
         },
         data: {
           status: "FAILED",
@@ -92,7 +52,5 @@ export async function startWorker() {
         },
       });
     }
-
-    console.log("Job received from queue:", front);
   }
 }
